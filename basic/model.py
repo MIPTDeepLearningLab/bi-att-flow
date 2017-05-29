@@ -3,7 +3,7 @@ import random
 import itertools
 import numpy as np
 import tensorflow as tf
-from tensorflow.python.ops.rnn_cell import BasicLSTMCell
+from tensorflow.contrib.rnn import BasicLSTMCell
 
 from basic.read_data import DataSet
 from my.tensorflow import get_initializer
@@ -63,8 +63,8 @@ class Model(object):
         if config.mode == 'train':
             self._build_ema()
 
-        self.summary = tf.merge_all_summaries()
-        self.summary = tf.merge_summary(tf.get_collection("summaries", scope=self.scope))
+        self.summary = tf.summary.merge_all()
+        self.summary = tf.summary.merge(tf.get_collection("summaries", scope=self.scope))
 
     def _build_forward(self):
         config = self.config
@@ -108,7 +108,7 @@ class Model(object):
                     else:
                         word_emb_mat = tf.get_variable("word_emb_mat", shape=[VW, dw], dtype='float')
                     if config.use_glove_for_unk:
-                        word_emb_mat = tf.concat(0, [word_emb_mat, self.new_emb_mat])
+                        word_emb_mat = tf.concat(axis=0, values=[word_emb_mat, self.new_emb_mat])
 
                 with tf.name_scope("word"):
                     Ax = tf.nn.embedding_lookup(word_emb_mat, self.x)  # [N, M, JX, d]
@@ -116,8 +116,8 @@ class Model(object):
                     self.tensor_dict['x'] = Ax
                     self.tensor_dict['q'] = Aq
                 if config.use_char_emb:
-                    xx = tf.concat(3, [xx, Ax])  # [N, M, JX, di]
-                    qq = tf.concat(2, [qq, Aq])  # [N, JQ, di]
+                    xx = tf.concat(axis=3, values=[xx, Ax])  # [N, M, JX, di]
+                    qq = tf.concat(axis=2, values=[qq, Aq])  # [N, JQ, di]
                 else:
                     xx = Ax
                     qq = Aq
@@ -139,14 +139,14 @@ class Model(object):
 
         with tf.variable_scope("prepro"):
             (fw_u, bw_u), ((_, fw_u_f), (_, bw_u_f)) = bidirectional_dynamic_rnn(d_cell, d_cell, qq, q_len, dtype='float', scope='u1')  # [N, J, d], [N, d]
-            u = tf.concat(2, [fw_u, bw_u])
+            u = tf.concat(axis=2, values=[fw_u, bw_u])
             if config.share_lstm_weights:
                 tf.get_variable_scope().reuse_variables()
                 (fw_h, bw_h), _ = bidirectional_dynamic_rnn(cell, cell, xx, x_len, dtype='float', scope='u1')  # [N, M, JX, 2d]
-                h = tf.concat(3, [fw_h, bw_h])  # [N, M, JX, 2d]
+                h = tf.concat(axis=3, values=[fw_h, bw_h])  # [N, M, JX, 2d]
             else:
                 (fw_h, bw_h), _ = bidirectional_dynamic_rnn(cell, cell, xx, x_len, dtype='float', scope='h1')  # [N, M, JX, 2d]
-                h = tf.concat(3, [fw_h, bw_h])  # [N, M, JX, 2d]
+                h = tf.concat(axis=3, values=[fw_h, bw_h])  # [N, M, JX, 2d]
             self.tensor_dict['u'] = u
             self.tensor_dict['h'] = h
 
@@ -162,18 +162,18 @@ class Model(object):
                 first_cell = d_cell
 
             (fw_g0, bw_g0), _ = bidirectional_dynamic_rnn(first_cell, first_cell, p0, x_len, dtype='float', scope='g0')  # [N, M, JX, 2d]
-            g0 = tf.concat(3, [fw_g0, bw_g0])
+            g0 = tf.concat(axis=3, values=[fw_g0, bw_g0])
             (fw_g1, bw_g1), _ = bidirectional_dynamic_rnn(first_cell, first_cell, g0, x_len, dtype='float', scope='g1')  # [N, M, JX, 2d]
-            g1 = tf.concat(3, [fw_g1, bw_g1])
+            g1 = tf.concat(axis=3, values=[fw_g1, bw_g1])
 
             logits = get_logits([g1, p0], d, True, wd=config.wd, input_keep_prob=config.input_keep_prob,
                                 mask=self.x_mask, is_train=self.is_train, func=config.answer_func, scope='logits1')
             a1i = softsel(tf.reshape(g1, [N, M * JX, 2 * d]), tf.reshape(logits, [N, M * JX]))
             a1i = tf.tile(tf.expand_dims(tf.expand_dims(a1i, 1), 1), [1, M, JX, 1])
 
-            (fw_g2, bw_g2), _ = bidirectional_dynamic_rnn(d_cell, d_cell, tf.concat(3, [p0, g1, a1i, g1 * a1i]),
+            (fw_g2, bw_g2), _ = bidirectional_dynamic_rnn(d_cell, d_cell, tf.concat(axis=3, values=[p0, g1, a1i, g1 * a1i]),
                                                           x_len, dtype='float', scope='g2')  # [N, M, JX, 2d]
-            g2 = tf.concat(3, [fw_g2, bw_g2])
+            g2 = tf.concat(axis=3, values=[fw_g2, bw_g2])
             logits2 = get_logits([g2, p0], d, True, wd=config.wd, input_keep_prob=config.input_keep_prob,
                                  mask=self.x_mask,
                                  is_train=self.is_train, func=config.answer_func, scope='logits2')
@@ -200,15 +200,15 @@ class Model(object):
         JQ = tf.shape(self.q)[1]
         loss_mask = tf.reduce_max(tf.cast(self.q_mask, 'float'), 1)
         losses = tf.nn.softmax_cross_entropy_with_logits(
-            self.logits, tf.cast(tf.reshape(self.y, [-1, M * JX]), 'float'))
+            logits=self.logits, labels=tf.cast(tf.reshape(self.y, [-1, M * JX]), 'float'))
         ce_loss = tf.reduce_mean(loss_mask * losses)
         tf.add_to_collection('losses', ce_loss)
         ce_loss2 = tf.reduce_mean(tf.nn.softmax_cross_entropy_with_logits(
-            self.logits2, tf.cast(tf.reshape(self.y2, [-1, M * JX]), 'float')))
+            logits=self.logits2, labels=tf.cast(tf.reshape(self.y2, [-1, M * JX]), 'float')))
         tf.add_to_collection("losses", ce_loss2)
 
         self.loss = tf.add_n(tf.get_collection('losses', scope=self.scope), name='loss')
-        tf.scalar_summary(self.loss.op.name, self.loss)
+        tf.summary.scalar(self.loss.op.name, self.loss)
         tf.add_to_collection('ema/scalar', self.loss)
 
     def _build_ema(self):
@@ -218,10 +218,10 @@ class Model(object):
         ema_op = ema.apply(tensors)
         for var in tf.get_collection("ema/scalar", scope=self.scope):
             ema_var = ema.average(var)
-            tf.scalar_summary(ema_var.op.name, ema_var)
+            tf.summary.scalar(ema_var.op.name, ema_var)
         for var in tf.get_collection("ema/vector", scope=self.scope):
             ema_var = ema.average(var)
-            tf.histogram_summary(ema_var.op.name, ema_var)
+            tf.summary.histogram(ema_var.op.name, ema_var)
 
         with tf.control_dependencies([ema_op]):
             self.loss = tf.identity(self.loss)
@@ -419,7 +419,7 @@ def attention_layer(config, is_train, h, u, h_mask=None, u_mask=None, scope=None
         if not config.c2q_att:
             u_a = tf.tile(tf.expand_dims(tf.expand_dims(tf.reduce_mean(u, 1), 1), 1), [1, M, JX, 1])
         if config.q2c_att:
-            p0 = tf.concat(3, [h, u_a, h * u_a, h * h_a])
+            p0 = tf.concat(axis=3, values=[h, u_a, h * u_a, h * h_a])
         else:
-            p0 = tf.concat(3, [h, u_a, h * u_a])
+            p0 = tf.concat(axis=3, values=[h, u_a, h * u_a])
         return p0
