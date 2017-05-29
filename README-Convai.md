@@ -1,14 +1,35 @@
 # Requirements
 
 - Python 3
-- tensorflow 0.11: https://www.tensorflow.org/versions/r0.11/
+- Docker ver. 17.03+:
+
+   - Ubuntu: https://docs.docker.com/engine/installation/linux/ubuntu/#install-using-the-repository
+   - Mac: https://download.docker.com/mac/stable/Docker.dmg
+
+- pip3 install requests==2.16.5
 
 
-# How to run
+# Setup
 
-1. `pip install -r requirements.txt`
-2. `python run_demo.py`
-3. `python get_answer.py --question "What branch of theoretical computer science deals with broadly classifying computational problems by difficulty and class of relationship?" --paragraph "Computational complexity theory is a branch of the theory of computation in theoretical computer science that focuses on classifying computational problems according to their inherent difficulty, and relating those classes to each other. A computational problem is understood to be a task that is in principle amenable to being solved by a computer, which is equivalent to stating that the problem may be solved by mechanical application of mathematical steps, such as an algorithm."`
+- `./setup`
 
-Output: `Computational complexity theory`
+This script downloads and runs docker with bi-att-flow.
+
+# Usage
+
+`python3 get_answer.py --question <question> --paragraph <paragraph>`
+
+It outputs an answer.
+
+## Example
+
+```
+python3 get_answer.py --question "where is the Victoria and Albert Museum located?" \
+  --paragraph "The Victoria and Albert Museum (often abbreviated as the V&A), London, is the world's largest museum of decorative arts and design, housing a permanent collection of over 4.5 million objects. It was founded in 1852 and named after Queen Victoria and Prince Albert."
+```
+
+Output: `London`
+
+
+
 
