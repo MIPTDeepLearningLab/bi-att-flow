@@ -111,6 +111,7 @@ flags.DEFINE_bool("late", False, "Late fusion? [False]")
 flags.DEFINE_string("device_type", "cpu", "cpu | gpu [gpu]")
 flags.DEFINE_bool("dynamic_att", False, "Dynamic attention [False]")
 
+
 class Demo(object):
     def __init__(self):
         config = flags.FLAGS
@@ -124,7 +125,6 @@ class Demo(object):
         self.config = config
         self.test_data = None
         self.data_ready(update=True)
-	
 
         config = self.config
 
@@ -138,7 +138,7 @@ class Demo(object):
         self.config = config
 
     def data_ready(self, data=None, update=False):
-        
+
         config = self.config
         config.batch_size = 1
         test_data = read_data(self.config, 'demo', True, data=data, data_set=self.test_data)
@@ -146,7 +146,8 @@ class Demo(object):
         if update:
             update_config(self.config, [test_data])
             if config.use_glove_for_unk:
-                word2vec_dict = test_data.shared['lower_word2vec'] if config.lower_word else test_data.shared['word2vec']
+                word2vec_dict = test_data.shared['lower_word2vec'] \
+                    if config.lower_word else test_data.shared['word2vec']
                 new_word2idx_dict = test_data.shared['new_word2idx']
                 idx2vec_dict = {idx: word2vec_dict[word] for word, idx in new_word2idx_dict.items()}
                 new_emb_mat = np.array([idx2vec_dict[idx] for idx in range(len(idx2vec_dict))], dtype='float32')
@@ -162,7 +163,8 @@ class Demo(object):
         for multi_batch in test_data.get_batches(config.batch_size, num_batches=1, cluster=config.cluster):
             ei = self.evaluator.get_evaluation(self.sess, multi_batch)
             e = ei if e is None else e + ei
-        return (e.id2answer_dict[0])
+        return e.id2answer_dict[0]
+
 
 if __name__ == "__main__":
     tf.app.run()
